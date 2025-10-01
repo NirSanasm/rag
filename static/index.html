@@ -1,0 +1,72 @@
+<!-- static/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gazette RAG Search</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 20px; }
+        textarea { width: 100%; height: 80px; padding: 10px; margin: 10px 0; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #result { margin-top: 20px; white-space: pre-wrap; }
+        .sources { margin-top: 10px; font-size: 0.9em; color: #555; }
+        .error { color: red; }
+        .loading { color: #007bff; }
+    </style>
+</head>
+<body>
+    <h1>Gazette RAG Search</h1>
+    <textarea id="queryInput" placeholder="Enter your query about gazettes..."></textarea><br>
+    <button onclick="submitQuery()">Search</button>
+
+    <div id="result"></div>
+
+    <script>
+        async function submitQuery() {
+            const input = document.getElementById("queryInput").value.trim();
+            const resultDiv = document.getElementById("result");
+            if (!input) {
+                resultDiv.innerHTML = '<div class="error">Please enter a query.</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="loading">Searching...</div>';
+
+            try {
+                const response = await fetch('/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: input })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    resultDiv.innerHTML = `<div class="error">Error: ${data.detail || 'Unknown error'}</div>`;
+                    return;
+                }
+
+                let resultHTML = `<div>${data.answer}</div>`;
+                if (data.sources && data.sources.length > 0) {
+                    const sources = data.sources.map(s => `Gazette ${s.gazette_id} (Chunk ${s.chunk_index})`).join('<br>- ');
+                    resultHTML += `<div class="sources"><strong>Sources:</strong><br>- ${sources}</div>`;
+                }
+                resultDiv.innerHTML = resultHTML;
+
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="error">Network error: ${err.message}</div>`;
+            }
+        }
+
+        // Allow Enter key to submit
+        document.getElementById("queryInput").addEventListener("keypress", function(e) {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submitQuery();
+            }
+        });
+    </script>
+</body>
+</html>
