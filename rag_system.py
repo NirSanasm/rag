@@ -33,15 +33,15 @@ def get_db_config():
             "host": parsed.hostname,
             "port": parsed.port or 5432,
         }
-    else:
-        # Fallback for local dev
-        return {
-            "dbname": "vector_testing",
-            "user": "postgres",
-            "password": "cubeten",
-            "host": "localhost",
-            "port": "5432"
-        }
+    # else:
+    #     # Fallback for local dev
+    #     return {
+    #         "dbname": "vector_testing",
+    #         "user": "postgres",
+    #         "password": "cubeten",
+    #         "host": "localhost",
+    #         "port": "5432"
+    #     }
 
 
 
@@ -142,7 +142,7 @@ class RAGSystem:
         tsquery = " | ".join(processed_query.bm25_keywords)
         sql = """
             SELECT gazette_id
-            FROM new_gazettes
+            FROM gazettes
             WHERE to_tsvector('english', ocr_text) @@ plainto_tsquery(%s)
             ORDER BY ts_rank_cd(to_tsvector('english', ocr_text), plainto_tsquery(%s)) DESC
             LIMIT %s
@@ -159,7 +159,7 @@ class RAGSystem:
                 placeholders = ','.join(['%s'] * len(gazette_ids))
                 cur.execute(f"""
                     SELECT content, gazette_id, chunk_index, (embedding <=> %s::vector) as distance
-                    FROM chunks 
+                    FROM gazette_embeddings 
                     WHERE gazette_id IN ({placeholders})
                     ORDER BY embedding <=> %s::vector 
                     LIMIT %s
@@ -167,7 +167,7 @@ class RAGSystem:
             else:
                 cur.execute("""
                     SELECT content, gazette_id, chunk_index, (embedding <=> %s::vector) as distance
-                    FROM chunks 
+                    FROM gazette_embeddings 
                     ORDER BY embedding <=> %s::vector 
                     LIMIT %s
                 """, (embedding_str, embedding_str, limit))
