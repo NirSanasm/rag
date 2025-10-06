@@ -9,16 +9,49 @@ from dotenv import load_dotenv
 import json
 from datetime import datetime
 from dataclasses import dataclass, asdict
+from urllib.parse import urlparse
 
 load_dotenv()
 
-DB_CONFIG = {
-    "dbname": "vector_testing",
-    "user": "postgres",
-    "password": "cubeten",
-    "host": "localhost",
-    "port": "5432"
-}
+
+
+def get_db_config():
+    db_url = os.getenv("DATABASE_URL")
+    print(db_url)
+    if db_url:
+        # Parse Render/Railway DB URL
+        parsed = urlparse(db_url)
+        print(parsed.path[1:])
+        print(parsed.password)
+        print(parsed.hostname)
+        print(parsed.port)
+        print(parsed.username)
+        return {
+            "dbname": parsed.path[1:],
+            "user": parsed.username,
+            "password": parsed.password,
+            "host": parsed.hostname,
+            "port": parsed.port or 5432,
+        }
+    else:
+        # Fallback for local dev
+        return {
+            "dbname": "vector_testing",
+            "user": "postgres",
+            "password": "cubeten",
+            "host": "localhost",
+            "port": "5432"
+        }
+
+
+
+# DB_CONFIG = {
+#     "dbname": "vector_testing",
+#     "user": "postgres",
+#     "password": "cubeten",
+#     "host": "localhost",
+#     "port": "5432"
+# }
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 NOMIC_API_KEY = os.getenv("NOMIC_API_KEY")
 JINA_API_KEY = os.getenv("JINA_API_KEY")
@@ -85,7 +118,8 @@ Return ONLY valid JSON."""
 
 class RAGSystem:
     def __init__(self):
-        self.conn = psycopg2.connect(**DB_CONFIG)
+        # self.conn = psycopg2.connect(**DB_CONFIG)
+        self.conn = psycopg2.connect(**get_db_config())
         self.query_processor = LLMQueryProcessor(api_key=OPENAI_API_KEY)
 
     def get_nomic_embedding(self, texts: List[str], task_type: str = "search_query") -> List[List[float]]:
