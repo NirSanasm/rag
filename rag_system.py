@@ -4,7 +4,7 @@ import os
 import psycopg2
 import requests
 from openai import OpenAI
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Optional
 from dotenv import load_dotenv
 import json
 from datetime import datetime
@@ -13,50 +13,26 @@ from urllib.parse import urlparse
 
 load_dotenv()
 
-
-
-def get_db_config():
-    db_url = os.getenv("DATABASE_URL")
-    print(db_url)
-    if db_url:
-        # Parse Render/Railway DB URL
-        parsed = urlparse(db_url)
-        print(parsed.path[1:])
-        print(parsed.password)
-        print(parsed.hostname)
-        print(parsed.port)
-        print(parsed.username)
-        return {
-            "dbname": parsed.path[1:],
-            "user": parsed.username,
-            "password": parsed.password,
-            "host": parsed.hostname,
-            "port": parsed.port or 5432,
-        }
-    # else:
-    #     # Fallback for local dev
-    #     return {
-    #         "dbname": "vector_testing",
-    #         "user": "postgres",
-    #         "password": "cubeten",
-    #         "host": "localhost",
-    #         "port": "5432"
-    #     }
-
-
-
-# DB_CONFIG = {
-#     "dbname": "vector_testing",
-#     "user": "postgres",
-#     "password": "cubeten",
-#     "host": "localhost",
-#     "port": "5432"
-# }
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 NOMIC_API_KEY = os.getenv("NOMIC_API_KEY")
 JINA_API_KEY = os.getenv("JINA_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+
+def get_db_config():
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise ValueError("DATABASE_URL environment variable is not set")
+    parsed = urlparse(db_url)
+    return {
+        "dbname": parsed.path[1:],
+        "user": parsed.username,
+        "password": parsed.password,
+        "host": parsed.hostname,
+        "port": parsed.port or 5432,
+        "sslmode": "require"  # Neon requires SSL
+    }
 
 
 @dataclass
@@ -118,9 +94,12 @@ Return ONLY valid JSON."""
 
 class RAGSystem:
     def __init__(self):
-        # self.conn = psycopg2.connect(**DB_CONFIG)
-        self.conn = psycopg2.connect(**get_db_config())
         self.query_processor = LLMQueryProcessor(api_key=OPENAI_API_KEY)
+
+    def _get_connection(self):
+        """Returns a new database connection (must be used in a 'with' block)"""
+        config = get_db_config()
+        return psycopg2.connect(**config)
 
     def get_nomic_embedding(self, texts: List[str], task_type: str = "search_query") -> List[List[float]]:
         if not NOMIC_API_KEY:
@@ -148,30 +127,34 @@ class RAGSystem:
             LIMIT %s
         """
         params = [tsquery, tsquery, limit]
-        with self.conn.cursor() as cur:
-            cur.execute(sql, params)
-            return [row[0] for row in cur.fetchall()]
+        
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                return [row[0] for row in cur.fetchall()]
 
     def retrieve_relevant_chunks(self, query_embedding: List[float], gazette_ids: List[str] = None, limit: int = 10) -> List[Tuple[str, str, int, float]]:
         embedding_str = json.dumps(query_embedding)
-        with self.conn.cursor() as cur:
-            if gazette_ids:
-                placeholders = ','.join(['%s'] * len(gazette_ids))
-                cur.execute(f"""
-                    SELECT content, gazette_id, chunk_index, (embedding <=> %s::vector) as distance
-                    FROM gazette_embeddings 
-                    WHERE gazette_id IN ({placeholders})
-                    ORDER BY embedding <=> %s::vector 
-                    LIMIT %s
-                """, (embedding_str, *gazette_ids, embedding_str, limit))
-            else:
-                cur.execute("""
-                    SELECT content, gazette_id, chunk_index, (embedding <=> %s::vector) as distance
-                    FROM gazette_embeddings 
-                    ORDER BY embedding <=> %s::vector 
-                    LIMIT %s
-                """, (embedding_str, embedding_str, limit))
-            return cur.fetchall()
+        
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                if gazette_ids:
+                    placeholders = ','.join(['%s'] * len(gazette_ids))
+                    cur.execute(f"""
+                        SELECT content, gazette_id, chunk_index, (embedding <=> %s::vector) as distance
+                        FROM gazette_embeddings 
+                        WHERE gazette_id IN ({placeholders})
+                        ORDER BY embedding <=> %s::vector 
+                        LIMIT %s
+                    """, (embedding_str, *gazette_ids, embedding_str, limit))
+                else:
+                    cur.execute("""
+                        SELECT content, gazette_id, chunk_index, (embedding <=> %s::vector) as distance
+                        FROM gazette_embeddings 
+                        ORDER BY embedding <=> %s::vector 
+                        LIMIT %s
+                    """, (embedding_str, embedding_str, limit))
+                return cur.fetchall()
 
     def rerank_chunks(self, query: str, documents: List[Tuple[str, str, int, float]], top_n: int = 3) -> List[Tuple[str, str, int]]:
         if not JINA_API_KEY:
