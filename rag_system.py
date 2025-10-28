@@ -228,20 +228,57 @@ class RAGSystem:
             else:
                 initial_chunks = self.retrieve_relevant_chunks(query_embedding, limit=20)
 
-            # initial_chunks = self.retrieve_relevant_chunks(query_embedding, limit=10)
-
-
             if not initial_chunks:
-                return {"answer": "No relevant information found.", "sources": []}
+                return {
+                    "answer": "No relevant information found.",
+                    "main_sources": [],
+                    "other_sources": []
+                }
 
+            # Rerank to get top chunks (with content, gazette_id, chunk_index)
             reranked = self.rerank_chunks(user_query, initial_chunks, top_n=6)
+
+            # Extract just the metadata tuples for generate_answer (as before)
             context_chunks = [c[0] for c in reranked]
-            metadata = [(c[1], c[2]) for c in reranked]
+            metadata = [(c[1], c[2]) for c in reranked]  # (gazette_id, chunk_index)
 
+            # Generate answer using only top reranked context
             answer = self.generate_answer(user_query, context_chunks, metadata)
-            sources = [{"gazette_id": gid, "chunk_index": idx} for gid, idx in metadata]
 
-            return {"answer": answer, "sources": sources}
+            # Build main_sources with context
+            main_sources = [
+                {
+                    "gazette_id": gazette_id,
+                    "chunk_index": chunk_index,
+                    "context": content
+                }
+                for content, gazette_id, chunk_index in reranked
+            ]
+
+            # Create a set of (gazette_id, chunk_index) for fast lookup
+            main_keys = {(gazette_id, chunk_index) for _, gazette_id, chunk_index in reranked}
+
+            # Build other_sources: all initial chunks NOT in main_sources
+            other_sources = [
+                {
+                    "gazette_id": gazette_id,
+                    "chunk_index": chunk_index,
+                    "context": content
+                }
+                for content, gazette_id, chunk_index, _ in initial_chunks
+                if (gazette_id, chunk_index) not in main_keys
+            ]
+
+            return {
+                "answer": answer,
+                "main_sources": main_sources,
+                "other_sources": other_sources
+            }
 
         except Exception as e:
-            return {"error": str(e)}
+            # In production, log the exception (e.g., logger.error(...))
+            return {
+                "answer": "An error occurred while processing your query.",
+                "main_sources": [],
+                "other_sources": []
+            }

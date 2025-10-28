@@ -18,9 +18,8 @@ class QueryRequest(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str
-    sources: list[dict]
-    error: str = None
-
+    main_sources: list[dict]
+    other_sources: list[dict]
 # Initialize RAG once at startup
 rag_system = RAGSystem()
 
