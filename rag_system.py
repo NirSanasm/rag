@@ -217,6 +217,37 @@ class RAGSystem:
         )
         return response.choices[0].message.content.strip()
 
+
+    def _fetch_gazette_metadata(self, gazette_ids: List[str]) -> dict:
+        """Fetch title, gazetteno, notificationdate, gazettedoc for given gazette_ids.
+        
+        Returns:
+            dict: {gazette_id: {title, gazetteno, notificationdate, gazettedoc}}
+        """
+        if not gazette_ids:
+            return {}
+        
+        placeholders = ','.join(['%s'] * len(gazette_ids))
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    SELECT gazette_id, title, gazetteno, notificationdate, gazettedoc
+                    FROM gazettes
+                    WHERE gazette_id IN ({placeholders})
+                """, gazette_ids)
+                rows = cur.fetchall()
+                return {
+                    row[0]: {
+                        "title": row[1],
+                        "gazetteno": row[2],
+                        "notificationdate": row[3],
+                        "gazettedoc": row[4]
+                    }
+                    for row in rows
+                }
+
+
+
     def query(self, user_query: str) -> dict:
         try:
             processed_query = self.query_processor.process_query(user_query)
@@ -235,18 +266,14 @@ class RAGSystem:
                     "other_sources": []
                 }
 
-            # Rerank to get top chunks (with content, gazette_id, chunk_index)
             reranked = self.rerank_chunks(user_query, initial_chunks, top_n=6)
 
-            # Extract just the metadata tuples for generate_answer (as before)
             context_chunks = [c[0] for c in reranked]
-            metadata = [(c[1], c[2]) for c in reranked]  # (gazette_id, chunk_index)
-
-            # Generate answer using only top reranked context
+            metadata = [(c[1], c[2]) for c in reranked]
             answer = self.generate_answer(user_query, context_chunks, metadata)
 
-            # Build main_sources with context
-            main_sources = [
+            # Build main_sources and other_sources with context
+            main_sources_raw = [
                 {
                     "gazette_id": gazette_id,
                     "chunk_index": chunk_index,
@@ -255,11 +282,8 @@ class RAGSystem:
                 for content, gazette_id, chunk_index in reranked
             ]
 
-            # Create a set of (gazette_id, chunk_index) for fast lookup
             main_keys = {(gazette_id, chunk_index) for _, gazette_id, chunk_index in reranked}
-
-            # Build other_sources: all initial chunks NOT in main_sources
-            other_sources = [
+            other_sources_raw = [
                 {
                     "gazette_id": gazette_id,
                     "chunk_index": chunk_index,
@@ -269,6 +293,36 @@ class RAGSystem:
                 if (gazette_id, chunk_index) not in main_keys
             ]
 
+            # Get all unique gazette_ids from both source lists
+            all_gazette_ids = list({src["gazette_id"] for src in main_sources_raw + other_sources_raw})
+
+            # Fetch metadata for all unique gazette_ids
+            gazette_metadata = self._fetch_gazette_metadata(all_gazette_ids)
+
+            # Enrich main_sources
+            main_sources = []
+            for src in main_sources_raw:
+                meta = gazette_metadata.get(src["gazette_id"], {})
+                main_sources.append({
+                    **src,
+                    "title": meta.get("title"),
+                    "gazetteno": meta.get("gazetteno"),
+                    "notificationdate": meta.get("notificationdate"),
+                    "gazettedoc": meta.get("gazettedoc")
+                })
+
+            # Enrich other_sources
+            other_sources = []
+            for src in other_sources_raw:
+                meta = gazette_metadata.get(src["gazette_id"], {})
+                other_sources.append({
+                    **src,
+                    "title": meta.get("title"),
+                    "gazetteno": meta.get("gazetteno"),
+                    "notificationdate": meta.get("notificationdate"),
+                    "gazettedoc": meta.get("gazettedoc")
+                })
+
             return {
                 "answer": answer,
                 "main_sources": main_sources,
@@ -276,7 +330,6 @@ class RAGSystem:
             }
 
         except Exception as e:
-            # In production, log the exception (e.g., logger.error(...))
             return {
                 "answer": "An error occurred while processing your query.",
                 "main_sources": [],
