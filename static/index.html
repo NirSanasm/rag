@@ -1,4 +1,3 @@
-<!-- static/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,61 +5,323 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gazette RAG Search</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 20px; }
-        textarea { width: 100%; height: 80px; padding: 10px; margin: 10px 0; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        #result { margin-top: 20px; white-space: pre-wrap; }
-        .sources { margin-top: 10px; font-size: 0.9em; color: #555; }
-        .error { color: red; }
-        .loading { color: #007bff; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #4ba2a2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #4ba2a2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            opacity: 0.9;
+            font-size: 0.95em;
+        }
+        
+        .search-section {
+            padding: 30px;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            margin-top: 15px;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #4ba2a2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        #result {
+            padding: 30px;
+            border-top: 1px solid #e0e0e0;
+            display: none;
+        }
+        
+        #result.show {
+            display: block;
+        }
+        
+        .answer {
+            line-height: 1.8;
+            color: #333;
+            margin-bottom: 25px;
+            white-space: pre-wrap;
+        }
+        
+        .sources-section {
+            margin-top: 25px;
+        }
+        
+        .sources-header {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .source-card {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            transition: transform 0.2s;
+        }
+        
+        .source-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .source-card.other-source {
+            border-left-color: #95a5a6;
+            background: #f0f0f0;
+        }
+        
+        .source-title {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        
+        .source-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 8px;
+        }
+        
+        .source-meta span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #667eea;
+            color: white;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: 600;
+        }
+        
+        .badge.other {
+            background: #95a5a6;
+        }
+        
+        .loading {
+            text-align: center;
+            color: #667eea;
+            padding: 40px;
+            font-size: 1.1em;
+        }
+        
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        
+        .error {
+            background: #fee;
+            border-left: 4px solid #e74c3c;
+            padding: 15px;
+            border-radius: 6px;
+            color: #c0392b;
+        }
+        
+        .no-sources {
+            color: #7f8c8d;
+            font-style: italic;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        @media (max-width: 600px) {
+            header h1 {
+                font-size: 1.5em;
+            }
+            
+            .search-section, #result {
+                padding: 20px;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>Gazette RAG Search</h1>
-    <textarea id="queryInput" placeholder="Enter your query about gazettes..."></textarea><br>
-    <button onclick="submitQuery()">Search</button>
-
-    <div id="result"></div>
+    <div class="container">
+        <header>
+            <h1>AI Gazette Search</h1>
+            <p>Search through gazette documents with AI-powered retrieval</p>
+            <p> <i>N.B: AI generated content may not be accurate</i> </p>
+        </header>
+        
+        <div class="search-section">
+            <textarea id="queryInput" placeholder="Enter your query about gazettes... "></textarea>
+            <button onclick="submitQuery()">Search</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
 
     <script>
         async function submitQuery() {
             const input = document.getElementById("queryInput").value.trim();
             const resultDiv = document.getElementById("result");
+            
             if (!input) {
-                resultDiv.innerHTML = '<div class="error">Please enter a query.</div>';
+                resultDiv.className = 'show';
+                resultDiv.innerHTML = '<div class="error">⚠️ Please enter a query.</div>';
                 return;
             }
-
-            resultDiv.innerHTML = '<div class="loading">Searching...</div>';
-
+            
+            resultDiv.className = 'show';
+            resultDiv.innerHTML = '<div class="loading">Searching gazettes</div>';
+            
             try {
                 const response = await fetch('/query', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query: input })
                 });
-
+                
                 const data = await response.json();
-
+                
                 if (!response.ok) {
-                    resultDiv.innerHTML = `<div class="error">Error: ${data.detail || 'Unknown error'}</div>`;
+                    resultDiv.innerHTML = `<div class="error">❌ Error: ${data.detail || 'Unknown error'}</div>`;
                     return;
                 }
-
-                let resultHTML = `<div>${data.answer}</div>`;
-                if (data.sources && data.sources.length > 0) {
-                    const sources = data.sources.map(s => `Gazette ${s.gazette_id} (Chunk ${s.chunk_index})`).join('<br>- ');
-                    resultHTML += `<div class="sources"><strong>Sources:</strong><br>- ${sources}</div>`;
+                
+                let resultHTML = `<div class="answer">${escapeHtml(data.answer)}</div>`;
+                
+                // Main sources
+                if (data.main_sources && data.main_sources.length > 0) {
+                    resultHTML += '<div class="sources-section">';
+                    resultHTML += '<div class="sources-header">📌 Main Sources</div>';
+                    data.main_sources.forEach(source => {
+                        resultHTML += formatSourceCard(source, false);
+                    });
+                    resultHTML += '</div>';
                 }
+                
+                // Other sources
+                if (data.other_sources && data.other_sources.length > 0) {
+                    resultHTML += '<div class="sources-section">';
+                    resultHTML += '<div class="sources-header">📚 Additional Sources</div>';
+                    data.other_sources.forEach(source => {
+                        resultHTML += formatSourceCard(source, true);
+                    });
+                    resultHTML += '</div>';
+                }
+                
+                if ((!data.main_sources || data.main_sources.length === 0) && 
+                    (!data.other_sources || data.other_sources.length === 0)) {
+                    resultHTML += '<div class="no-sources">No sources available for this query.</div>';
+                }
+                
                 resultDiv.innerHTML = resultHTML;
-
+                
             } catch (err) {
-                resultDiv.innerHTML = `<div class="error">Network error: ${err.message}</div>`;
+                resultDiv.innerHTML = `<div class="error">🔌 Network error: ${err.message}</div>`;
             }
         }
-
-        // Allow Enter key to submit
+        
+        function formatSourceCard(source, isOther) {
+            const badgeClass = isOther ? 'other' : '';
+            const cardClass = isOther ? 'source-card other-source' : 'source-card';
+            
+            return `
+                <div class="${cardClass}">
+                    <div class="source-title">
+                        <span class="badge ${badgeClass}">${isOther ? 'Additional' : 'Main'}</span>
+                        ${escapeHtml(source.title || 'Untitled Document')}
+                    </div>
+                    <div class="source-meta">
+                        <span>📄 Gazette #${source.gazette_id}</span>
+                        <span>📑 Chunk ${source.chunk_index}</span>
+                        ${source.gazetteno ? `<span>Gazette No. ${escapeHtml(source.gazetteno)}</span>` : ''}
+                        ${source.gazettedoc ? `<span>Source Link: ${escapeHtml(source.gazettedoc)}</span>` : ''}
+                        ${source.notificationdate ? `<span>📅 ${escapeHtml(source.notificationdate)}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Allow Enter key to submit (Shift+Enter for new line)
         document.getElementById("queryInput").addEventListener("keypress", function(e) {
             if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
