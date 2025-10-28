@@ -39,7 +39,6 @@ def get_db_config():
 class ProcessedQuery:
     bm25_keywords: list[str]
     intent: str
-    department: Optional[str]
     gazetteno: Optional[str]
     date_filter: Optional[dict]
     vector_search_query: str
@@ -69,7 +68,6 @@ class LLMQueryProcessor:
         return ProcessedQuery(
             bm25_keywords=result.get("bm25_keywords", []),
             intent=result.get("intent", "general"),
-            department=result.get("department"),
             gazetteno=result.get("gazetteno"),
             date_filter=result.get("date_filter"),
             vector_search_query=result.get("vector_search_query", user_query)
@@ -82,12 +80,11 @@ Current year: {self.current_year}
 Query: "{user_query}"
 
 Return JSON with:
-1. bm25_keywords: Core keywords without stopwords, with synonyms, normalized spelling
+1. bm25_keywords: Core keywords without stopwords. Normalized spelling must add 1-2 relevant synonyms for main conceptual keywords. Combine all into a flat list.
 2. intent: One of [fact_finding, summarization, monitoring, comparison, general]
-3. department: Department name if mentioned, else null
-4. gazetteno: Gazette number if present, else null
-5. date_filter: Parse dates as {{"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}} or null
-6. vector_search_query: Original + 3 semantic variations combined
+3. gazetteno: Gazette number if present, else null
+4. date_filter: Parse dates as {{"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}} or null
+5. vector_search_query: Original query + 2-3 semantic variations combined as a single string.
 
 Return ONLY valid JSON."""
 
@@ -118,19 +115,43 @@ class RAGSystem:
     def bm25_search_with_filters(self, processed_query: ProcessedQuery, limit: int = 50) -> List[str]:
         if not processed_query.bm25_keywords:
             return []
+
         tsquery = " | ".join(processed_query.bm25_keywords)
-        sql = """
+        
+        # Base query parts
+        base_sql = """
             SELECT gazette_id
             FROM gazettes
             WHERE to_tsvector('english', ocr_text) @@ plainto_tsquery(%s)
+        """
+        params = [tsquery]
+
+        # Add gazette number filter if present
+        if processed_query.gazetteno is not None:
+            base_sql += " AND gazette_number = %s"
+            params.append(processed_query.gazetteno)
+
+        # Add date range filter if present
+        if processed_query.date_filter is not None:
+            start_date = processed_query.date_filter.get("start_date")
+            end_date = processed_query.date_filter.get("end_date")
+            if start_date:
+                base_sql += " AND publication_date >= %s"
+                params.append(start_date)
+            if end_date:
+                base_sql += " AND publication_date <= %s"
+                params.append(end_date)
+
+        # Complete query with ordering and limit
+        base_sql += """
             ORDER BY ts_rank_cd(to_tsvector('english', ocr_text), plainto_tsquery(%s)) DESC
             LIMIT %s
         """
-        params = [tsquery, tsquery, limit]
-        
+        params.extend([tsquery, limit])
+
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, params)
+                cur.execute(base_sql, params)
                 return [row[0] for row in cur.fetchall()]
 
     def retrieve_relevant_chunks(self, query_embedding: List[float], gazette_ids: List[str] = None, limit: int = 10) -> List[Tuple[str, str, int, float]]:
@@ -199,18 +220,21 @@ class RAGSystem:
     def query(self, user_query: str) -> dict:
         try:
             processed_query = self.query_processor.process_query(user_query)
-            gazette_ids = self.bm25_search_with_filters(processed_query, limit=50)
+            gazette_ids = self.bm25_search_with_filters(processed_query, limit=150)
             query_embedding = self.get_nomic_embedding([processed_query.vector_search_query])[0]
             
             if gazette_ids:
-                initial_chunks = self.retrieve_relevant_chunks(query_embedding, gazette_ids, limit=10)
+                initial_chunks = self.retrieve_relevant_chunks(query_embedding, gazette_ids, limit=20)
             else:
-                initial_chunks = self.retrieve_relevant_chunks(query_embedding, limit=10)
+                initial_chunks = self.retrieve_relevant_chunks(query_embedding, limit=20)
+
+            # initial_chunks = self.retrieve_relevant_chunks(query_embedding, limit=10)
+
 
             if not initial_chunks:
                 return {"answer": "No relevant information found.", "sources": []}
 
-            reranked = self.rerank_chunks(user_query, initial_chunks, top_n=3)
+            reranked = self.rerank_chunks(user_query, initial_chunks, top_n=6)
             context_chunks = [c[0] for c in reranked]
             metadata = [(c[1], c[2]) for c in reranked]
 
