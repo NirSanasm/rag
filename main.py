@@ -3,7 +3,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from rag_system import RAGSystem
+# from rag_system import RAGSystem
+from rrf import RAGSystem
 import logging
 
 logging.basicConfig(level=logging.INFO)

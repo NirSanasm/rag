@@ -10,6 +10,7 @@ from dataclasses import dataclass, asdict
 from urllib.parse import urlparse
 import logging
 from collections import defaultdict
+import re
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, 
@@ -199,7 +200,7 @@ class RAGSystem:
 
         if processed_query.gazetteno is not None:
             where_clauses.append("g.gazetteno = %s")
-            params.append(processed_query.gazetteno)
+            params.append(str(processed_query.gazetteno))
             logger.debug(f"Added filter: gazetteno = {processed_query.gazetteno}")
 
         if processed_query.date_filter is not None:
@@ -360,35 +361,140 @@ class RAGSystem:
             # Fallback: return the top_n chunks from the original fused list
             return documents[:top_n]
 
-    def generate_answer(self, query: str, context_chunks: List[str], chunk_metadata: List[Tuple[str, int]]) -> str:
-        """Generates the final answer using an LLM, based on the reranked context."""
-        logger.info("Generating final answer...")
-        if not context_chunks:
-            logger.warning("No context provided for answer generation.")
-            return "No relevant information found to answer the question."
+    # def generate_answer(self, query: str, context_chunks: List[str], chunk_metadata: List[Tuple[str, int]]) -> str:
+    #     """Generates the final answer using an LLM, based on the reranked context."""
+    #     logger.info("Generating final answer...")
+    #     if not context_chunks:
+    #         logger.warning("No context provided for answer generation.")
+    #         return "No relevant information found to answer the question."
 
-        context_parts = []
-        for chunk, (gazette_id, chunk_idx) in zip(context_chunks, chunk_metadata):
-            context_parts.append(f"Source [Gazette: {gazette_id}, Chunk: {chunk_idx}]:\n{chunk}")
+    #     context_parts = []
+    #     for chunk, (gazette_id, chunk_idx) in zip(context_chunks, chunk_metadata):
+    #         context_parts.append(f"Source [Gazette: {gazette_id}, Chunk: {chunk_idx}]:\n{chunk}")
         
-        context = "\n\n".join(context_parts)
-        logger.debug(f"Context for answer generation:\n{context[:500]}...")
+    #     context = "\n\n".join(context_parts)
+    #     logger.debug(f"Context for answer generation:\n{context[:500]}...")
 
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant. Answer the user's question based *only* on the provided context. Clearly cite the source for each piece of information using the format [Gazette: gazette_id, Chunk: chunk_index]."},
-                    {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
-                ],
-                temperature=0.2
-            )
-            answer = response.choices[0].message.content.strip()
-            logger.info("Answer generated successfully.")
-            return answer
-        except Exception as e:
-            logger.error(f"OpenAI answer generation failed: {e}", exc_info=True)
-            return "An error occurred while generating the answer."
+    #     try:
+    #         response = self.client.chat.completions.create(
+    #             model="gpt-3.5-turbo",
+    #             messages=[
+    #                 {"role": "system", "content": "You are a helpful assistant. Answer the user's question based *only* on the provided context. Clearly cite the source for each piece of information using the format [Gazette: gazette_id, Chunk: chunk_index]."},
+    #                 {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
+    #             ],
+    #             temperature=0.2
+    #         )
+    #         answer = response.choices[0].message.content.strip()
+    #         logger.info("Answer generated successfully.")
+    #         return answer
+    #     except Exception as e:
+    #         logger.error(f"OpenAI answer generation failed: {e}", exc_info=True)
+    #         return "An error occurred while generating the answer."
+
+
+
+    def sanitize_context(self, text: str) -> str:
+        text = re.sub(r"\b\d{5,}\b", "[number]", text)  # replace long digit sequences
+        text = re.sub(r"http\S+|www\S+", "[url]", text)
+        text = re.sub(r"[^ -~\n]", "", text)  # remove non-ASCII garbage
+        return text
+    
+
+    def generate_answer(
+            self,
+            query: str,
+            processed_query: ProcessedQuery,
+            context_chunks: List[str],
+            chunk_metadata: List[Tuple[str, int]],
+        ) -> str:
+            """Generates the final answer using an LLM, customized by user intent."""
+            logger.info("Generating final answer...")
+
+            if not context_chunks:
+                logger.warning("No context provided for answer generation.")
+                return "No relevant information found to answer the question."
+
+            # Build the formatted context
+            context_parts = []
+            for chunk, (gazette_id, chunk_idx) in zip(context_chunks, chunk_metadata):
+                context_parts.append(f"Source [Gazette: {gazette_id}, Chunk: {chunk_idx}]:\n{chunk}")
+            context = "\n\n".join(context_parts)
+
+            context = self.sanitize_context(context)
+
+            
+
+            # --- Intent-based instructions ---
+            intent = processed_query.intent.lower() if processed_query.intent else "general"
+
+            if intent == "fact_finding":
+                user_prompt = (
+                    f"You are tasked with providing a **factual and precise** answer based only on the context. "
+                    f"Do not speculate. Clearly cite the source for each fact using the format "
+                    f"[Gazette: gazette_id, Chunk: chunk_index].\n\n"
+                    f"Context:\n{context}\n\nQuestion: {query}"
+                )
+
+            elif intent == "summarization":
+                user_prompt = (
+                    f"Summarize the key points relevant to the question using the provided context. "
+                    f"Focus on clarity and completeness. Avoid repetition. "
+                    f"Include brief source citations in the format [Gazette: gazette_id, Chunk: chunk_index].\n\n"
+                    f"Context:\n{context}\n\nQuestion: {query}"
+                )
+
+            elif intent == "monitoring":
+                user_prompt = (
+                    f"Analyze the provided context to identify **updates, changes, or progress over time** "
+                    f"relevant to the question. Highlight trends or recurring themes. "
+                    f"Support each point with a source citation [Gazette: gazette_id, Chunk: chunk_index].\n\n"
+                    f"Context:\n{context}\n\nQuestion: {query}"
+                )
+
+            elif intent == "comparison":
+                user_prompt = (
+                    f"Compare and contrast the relevant items, events, or rules mentioned in the context. "
+                    f"Clearly list similarities and differences. "
+                    f"Provide supporting citations for each point using [Gazette: gazette_id, Chunk: chunk_index].\n\n"
+                    f"Context:\n{context}\n\nQuestion: {query}"
+                )
+
+            else:  # general
+                user_prompt = (
+                    f"Answer the question concisely using the provided context. "
+                    f"Make sure the answer is helpful and grounded in the context. "
+                    f"Cite the sources using [Gazette: gazette_id, Chunk: chunk_index].\n\n"
+                    f"Context:\n{context}\n\nQuestion: {query}"
+                )
+
+            # --- Call LLM ---
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a domain expert assistant that answers strictly based on the provided gazette context.",
+                        },
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.2,
+                )
+
+                answer = response.choices[0].message.content.strip()
+                logger.info("Answer generated successfully.")
+                logger.info(response)
+
+                logger.debug(f"Answer preview: {answer[:300]}...")
+                return answer
+
+            except Exception as e:
+                logger.error(f"OpenAI answer generation failed: {e}", exc_info=True)
+                return "An error occurred while generating the answer."
+        
+
+
+
 
     def _fetch_gazette_metadata(self, gazette_ids: List[str]) -> dict:
         """Fetches metadata for a list of gazette_ids for enriching the source references."""
@@ -486,7 +592,8 @@ class RAGSystem:
             # 5. Generate
             context_chunks = [c[0] for c in reranked]
             metadata = [(c[1], c[2]) for c in reranked]
-            answer = self.generate_answer(user_query, context_chunks, metadata)
+            # answer = self.generate_answer(user_query, context_chunks, metadata)
+            answer = self.generate_answer(user_query, processed_query, context_chunks, metadata)
 
             # 6. Collate Sources
             main_sources_raw = [
