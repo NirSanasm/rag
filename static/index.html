@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gazette RAG Search</title>
+    <title>Gazette Search</title>
     <style>
         * {
             margin: 0;
@@ -12,383 +12,594 @@
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #4ba2a2 100%);
-            min-height: 100vh;
-            padding: 20px;
+            font-family: arial, sans-serif;
+            background: #fff;
+            color: #202124;
         }
         
-        .container {
-            max-width: 900px;
+        /* Header Section */
+        .header {
+            padding: 20px 40px;
+            border-bottom: 1px solid #ebebeb;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 500;
+            color: #1a73e8;
+            margin-bottom: 20px;
+        }
+        
+        .search-container {
+            max-width: 690px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            overflow: hidden;
         }
         
-        header {
-            background: linear-gradient(135deg, #667eea 0%, #4ba2a2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
+        .search-box {
+            display: flex;
+            align-items: center;
+            border: 1px solid #dfe1e5;
+            border-radius: 24px;
+            padding: 10px 20px;
+            background: #fff;
+            box-shadow: 0 1px 6px rgba(32,33,36,.28);
         }
         
-        header h1 {
-            font-size: 2em;
-            margin-bottom: 10px;
+        .search-box:hover {
+            box-shadow: 0 1px 6px rgba(32,33,36,.40);
         }
         
-        header p {
-            opacity: 0.9;
-            font-size: 0.95em;
-        }
-        
-        .search-section {
-            padding: 30px;
-        }
-        
-        textarea {
-            width: 100%;
-            height: 100px;
-            padding: 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 1em;
-            font-family: inherit;
-            resize: vertical;
-            transition: border-color 0.3s;
-        }
-        
-        textarea:focus {
+        .search-box input {
+            flex: 1;
+            border: none;
             outline: none;
-            border-color: #667eea;
+            font-size: 16px;
+            padding: 5px 10px;
         }
         
-        button {
-            margin-top: 15px;
-            padding: 12px 30px;
-            background: linear-gradient(135deg, #667eea 0%, #4ba2a2 100%);
+        .search-icon {
+            color: #9aa0a6;
+            margin-right: 10px;
+        }
+        
+        .search-btn {
+            background: #1a73e8;
             color: white;
             border: none;
-            border-radius: 8px;
-            font-size: 1em;
+            padding: 8px 20px;
+            border-radius: 4px;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            font-size: 14px;
+            margin-left: 10px;
         }
         
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        .search-btn:hover {
+            background: #1765cc;
         }
         
-        button:active {
-            transform: translateY(0);
+        /* Main Content */
+        .content {
+            max-width: 690px;
+            margin: 0 auto;
+            padding: 20px 40px;
         }
         
-        #result {
-            padding: 30px;
-            border-top: 1px solid #e0e0e0;
-            display: none;
+        /* AI Overview Section */
+        .ai-overview {
+            background: #f8f9fa;
+            border: 1px solid #e8eaed;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 30px;
+            animation: fadeIn 0.3s ease;
         }
         
-        #result.show {
-            display: block;
+        .ai-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 16px;
+            gap: 10px;
         }
         
-        .answer {
+        .ai-badge {
+            background: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .ai-disclaimer {
+            color: #5f6368;
+            font-size: 12px;
+        }
+        
+        .ai-content {
             line-height: 1.8;
-            color: #333;
-            margin-bottom: 25px;
-            white-space: pre-wrap;
+            color: #202124;
+            font-size: 14px;
         }
         
-        .sources-section {
-            margin-top: 25px;
+        .ai-content h1, .ai-content h2, .ai-content h3 {
+            color: #202124;
+            margin: 16px 0 8px 0;
+            font-weight: 500;
         }
         
-        .sources-header {
-            font-size: 1.2em;
+        .ai-content h1 { font-size: 18px; }
+        .ai-content h2 { font-size: 16px; }
+        .ai-content h3 { font-size: 15px; }
+        
+        .ai-content p {
+            margin: 12px 0;
+        }
+        
+        .ai-content ul, .ai-content ol {
+            margin: 12px 0;
+            padding-left: 24px;
+        }
+        
+        .ai-content li {
+            margin: 8px 0;
+        }
+        
+        .ai-content strong, .ai-content b {
             font-weight: 600;
-            color: #667eea;
-            margin-bottom: 15px;
+            color: #202124;
+        }
+        
+        .ai-content em, .ai-content i {
+            font-style: italic;
+        }
+        
+        .ai-content code {
+            background: #f1f3f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        .ai-content blockquote {
+            border-left: 3px solid #dadce0;
+            padding-left: 16px;
+            margin: 12px 0;
+            color: #5f6368;
+        }
+        
+        .ai-content a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        
+        .ai-content a:hover {
+            text-decoration: underline;
+        }
+        
+        .toggle-btn {
+            background: none;
+            border: none;
+            color: #1a73e8;
+            font-size: 13px;
+            cursor: pointer;
+            padding: 8px 0;
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .toggle-btn:hover {
+            text-decoration: underline;
+        }
+        
+        /* Results Section */
+        .results-info {
+            color: #70757a;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        
+        .result-item {
+            margin-bottom: 32px;
+            animation: slideUp 0.3s ease;
+        }
+        
+        .result-header {
             display: flex;
             align-items: center;
             gap: 8px;
+            margin-bottom: 4px;
         }
         
-        .source-card {
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-            padding: 15px;
-            margin-bottom: 15px;
-            border-radius: 6px;
-            transition: transform 0.2s;
+        .result-badge {
+            background: #e8f0fe;
+            color: #1967d2;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
         }
         
-        .source-card:hover {
-            transform: translateX(5px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        .result-url {
+            color: #202124;
+            font-size: 14px;
+            line-height: 1.3;
         }
         
-        .source-card.other-source {
-            border-left-color: #95a5a6;
-            background: #f0f0f0;
+        .result-path {
+            color: #5f6368;
+            font-size: 12px;
         }
         
-        .source-title {
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 8px;
-            font-size: 0.95em;
+        .result-title {
+            color: #1a0dab;
+            font-size: 20px;
+            text-decoration: none;
+            display: block;
+            margin: 4px 0 2px 0;
+            cursor: pointer;
+            line-height: 1.3;
         }
         
-        .source-meta {
+        .result-title:hover {
+            text-decoration: underline;
+        }
+        
+        .result-title:visited {
+            color: #681da8;
+        }
+        
+        .result-meta {
             display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            font-size: 0.85em;
-            color: #666;
+            gap: 16px;
+            color: #5f6368;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+        
+        .result-snippet {
+            color: #4d5156;
+            font-size: 14px;
+            line-height: 1.6;
             margin-top: 8px;
         }
         
-        .source-meta span {
+        .context-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e8eaed;
+        }
+        
+        .context-toggle {
+            background: none;
+            border: none;
+            color: #1a73e8;
+            font-size: 13px;
+            cursor: pointer;
+            padding: 0;
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 4px;
         }
         
-        .badge {
-            display: inline-block;
-            padding: 3px 8px;
-            background: #667eea;
-            color: white;
-            border-radius: 4px;
-            font-size: 0.75em;
-            font-weight: 600;
+        .context-toggle:hover {
+            text-decoration: underline;
         }
         
-        .badge.other {
-            background: #95a5a6;
-        }
-        
-        .loading {
-            text-align: center;
-            color: #667eea;
-            padding: 40px;
-            font-size: 1.1em;
-        }
-        
-        .loading::after {
-            content: '...';
-            animation: dots 1.5s steps(4, end) infinite;
-        }
-        
-        @keyframes dots {
-            0%, 20% { content: '.'; }
-            40% { content: '..'; }
-            60%, 100% { content: '...'; }
-        }
-        
-        .error {
-            background: #fee;
-            border-left: 4px solid #e74c3c;
-            padding: 15px;
-            border-radius: 6px;
-            color: #c0392b;
-        }
-        
-        .no-sources {
-            color: #7f8c8d;
-            font-style: italic;
-            padding: 15px;
-            text-align: center;
-        }
-
-        /* --- NEW STYLES ADDED --- */
-        .context-toggle-btn {
-            background: #f0f0f0;
-            border: 1px solid #ccc;
-            color: #555;
-            padding: 5px 10px;
-            font-size: 0.85em;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.2s;
-            margin-top: 10px; /* Add space from metadata */
-        }
-        
-        .context-toggle-btn:hover {
-            background: #e0e0e0;
-        }
-        
-        .source-context {
-            display: none; /* Hidden by default */
+        .context-content {
+            display: none;
             margin-top: 12px;
             padding: 12px;
-            background: #fafafa;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            white-space: pre-wrap; /* Preserve formatting of the context */
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 13px;
             line-height: 1.6;
-            color: #444;
-            max-height: 200px; /* Optional: limit height */
-            overflow-y: auto;   /* Optional: add scroll if too long */
+            color: #3c4043;
+            max-height: 200px;
+            overflow-y: auto;
         }
-        /* --- END OF NEW STYLES --- */
         
-        @media (max-width: 600px) {
-            header h1 {
-                font-size: 1.5em;
+        /* Loading State */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #5f6368;
+        }
+        
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #1a73e8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        /* Error State */
+        .error {
+            background: #fce8e6;
+            border: 1px solid #f4b9b4;
+            color: #d93025;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header, .content {
+                padding: 15px 20px;
             }
             
-            .search-section, #result {
-                padding: 20px;
+            .search-container {
+                max-width: 100%;
+            }
+            
+            .ai-overview, .result-item {
+                padding: 16px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>AI Gazette Search</h1>
-            <p>Search through gazette documents with AI-powered retrieval</p>
-            <p> <i>N.B: AI generated content may not be accurate</i> </p>
-        </header>
-        
-        <div class="search-section">
-            <textarea id="queryInput" placeholder="Enter your query about gazettes... "></textarea>
-            <button onclick="submitQuery()">Search</button>
+    <div class="header">
+        <div class="logo">Gazette Search</div>
+        <div class="search-container">
+            <div class="search-box">
+                <span class="search-icon"></span>
+                <input type="text" id="searchInput" placeholder="Search Manipur Gazettes...">
+                <button class="search-btn" onclick="performSearch()">Search</button>
+            </div>
         </div>
-        
-        <div id="result"></div>
     </div>
+    
+    <div class="content" id="resultsContainer"></div>
 
     <script>
-        async function submitQuery() {
-            const input = document.getElementById("queryInput").value.trim();
-            const resultDiv = document.getElementById("result");
+        // Markdown parsing function
+        function parseMarkdown(text) {
+            if (!text) return '';
             
-            if (!input) {
-                resultDiv.className = 'show';
-                resultDiv.innerHTML = '<div class="error">⚠️ Please enter a query.</div>';
+            // Capitalize key legal/government terms
+            const capitalizeTerms = (str) => {
+                const terms = {
+                    'manipur': 'Manipur',
+                    'governor': 'Governor',
+                    'act': 'Act',
+                    'commission': 'Commission',
+                    'state': 'State',
+                    'government': 'Government',
+                    'gazette': 'Gazette',
+                    'legislature': 'Legislature',
+                    'assembly': 'Assembly',
+                    'chief minister': 'Chief Minister',
+                    'council': 'Council',
+                    'board': 'Board',
+                    'welfare': 'Welfare',
+                    'minorities': 'Minorities',
+                    'medical': 'Medical',
+                    'india': 'India',
+                    'republic': 'Republic'
+                };
+                
+                let result = str;
+                for (let [lower, proper] of Object.entries(terms)) {
+                    const regex = new RegExp('\\b' + lower + '\\b', 'gi');
+                    result = result.replace(regex, proper);
+                }
+                return result;
+            };
+            
+            let html = text;
+            
+            // Headers
+            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+            html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+            html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+            
+            // Bold
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+            
+            // Italic
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+            
+            // Code
+            html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+            
+            // Links
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+            
+            // Lists - Unordered
+            html = html.replace(/^\* (.+)$/gim, '<li>$1</li>');
+            html = html.replace(/^- (.+)$/gim, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+            
+            // Lists - Ordered
+            html = html.replace(/^\d+\.\s(.+)$/gim, '<li>$1</li>');
+            
+            // Blockquotes
+            html = html.replace(/^> (.+)$/gim, '<blockquote>$1</blockquote>');
+            
+            // Line breaks and paragraphs
+            html = html.split('\n\n').map(para => {
+                if (para.trim() && 
+                    !para.startsWith('<h') && 
+                    !para.startsWith('<ul') && 
+                    !para.startsWith('<ol') && 
+                    !para.startsWith('<blockquote') &&
+                    !para.startsWith('<li>')) {
+                    return '<p>' + para.trim() + '</p>';
+                }
+                return para;
+            }).join('\n');
+            
+            // Capitalize important terms
+            html = capitalizeTerms(html);
+            
+            return html;
+        }
+        
+        async function performSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            const container = document.getElementById('resultsContainer');
+            
+            if (!query) {
+                container.innerHTML = '<div class="error">⚠️ Please enter a search query.</div>';
                 return;
             }
             
-            resultDiv.className = 'show';
-            resultDiv.innerHTML = '<div class="loading">Searching gazettes</div>';
+            container.innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>Searching gazettes...</div>
+                </div>
+            `;
             
             try {
                 const response = await fetch('/query', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: input })
+                    body: JSON.stringify({ query: query })
                 });
                 
                 const data = await response.json();
                 
                 if (!response.ok) {
-                    resultDiv.innerHTML = `<div class="error">❌ Error: ${data.detail || 'Unknown error'}</div>`;
+                    container.innerHTML = `<div class="error">❌ Error: ${data.detail || 'Unknown error'}</div>`;
                     return;
                 }
                 
-                let resultHTML = `<div class="answer">${escapeHtml(data.answer)}</div>`;
-                
-                // Main sources
-                if (data.main_sources && data.main_sources.length > 0) {
-                    resultHTML += '<div class="sources-section">';
-                    resultHTML += '<div class="sources-header">📌 Main Sources</div>';
-                    data.main_sources.forEach(source => {
-                        resultHTML += formatSourceCard(source, false);
-                    });
-                    resultHTML += '</div>';
-                }
-                
-                // Other sources
-                if (data.other_sources && data.other_sources.length > 0) {
-                    resultHTML += '<div class="sources-section">';
-                    resultHTML += '<div class="sources-header">📚 Additional Sources</div>';
-                    data.other_sources.forEach(source => {
-                        resultHTML += formatSourceCard(source, true);
-                    });
-                    resultHTML += '</div>';
-                }
-                
-                if ((!data.main_sources || data.main_sources.length === 0) && 
-                    (!data.other_sources || data.other_sources.length === 0)) {
-                    resultHTML += '<div class="no-sources">No sources available for this query.</div>';
-                }
-                
-                resultDiv.innerHTML = resultHTML;
+                displayResults(data);
                 
             } catch (err) {
-                resultDiv.innerHTML = `<div class="error">🔌 Network error: ${err.message}</div>`;
+                container.innerHTML = `<div class="error">🔌 Network error: ${err.message}</div>`;
             }
         }
         
-        // --- MODIFIED FUNCTION ---
-        function formatSourceCard(source, isOther) {
-            const badgeClass = isOther ? 'other' : '';
-            const cardClass = isOther ? 'source-card other-source' : 'source-card';
+        function displayResults(data) {
+            const container = document.getElementById('resultsContainer');
+            let html = '';
             
-            // Create a unique ID for the collapsible context div
-            const contextId = `context-${source.gazette_id}-${source.chunk_index}`;
-            
-            // Generate the HTML for the context button and div *only if* source.context exists
-            let contextHtml = '';
-            if (source.context) {
-                contextHtml = `
-                    <button class="context-toggle-btn" onclick="toggleContext(this, '${contextId}')">
-                        Show Context
-                    </button>
-                    <div class="source-context" id="${contextId}">
-                        ${escapeHtml(source.context)}
+            // AI Overview Section
+            if (data.answer) {
+                const formattedAnswer = parseMarkdown(data.answer);
+                html += `
+                    <div class="ai-overview">
+                        <div class="ai-header">
+                            <span class="ai-badge">AI Overview</span>
+                            <span class="ai-disclaimer">AI-generated content may not be accurate</span>
+                        </div>
+                        <div class="ai-content">${formattedAnswer}</div>
                     </div>
                 `;
             }
-
+            
+            // Combine all sources
+            const allSources = [
+                ...(data.main_sources || []).map(s => ({...s, isMain: true})),
+                ...(data.other_sources || []).map(s => ({...s, isMain: false}))
+            ];
+            
+            if (allSources.length > 0) {
+                html += `<div class="results-info">About ${allSources.length} results</div>`;
+                
+                allSources.forEach((source, index) => {
+                    html += createResultItem(source, index);
+                });
+            } else {
+                html += '<div class="results-info">No results found for your query.</div>';
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        function createResultItem(source, index) {
+            const badge = source.isMain ? 'Main Source' : 'Additional';
+            const title = source.title || 'Untitled Document';
+            const gazettePath = source.gazettedoc || '';
+            const date = source.notificationdate ? formatDate(source.notificationdate) : '';
+            
             return `
-                <div class="${cardClass}">
-                    <div class="source-title">
-                        <span class="badge ${badgeClass}">${isOther ? 'Additional' : 'Main'}</span>
-                        ${escapeHtml(source.title || 'Untitled Document')}
+                <div class="result-item">
+                    <div class="result-header">
+                        <span class="result-badge">${badge}</span>
                     </div>
-                    <div class="source-meta">
-                        <span>📄 Gazette #${source.gazette_id}</span>
-                        <span>📑 Chunk ${source.chunk_index}</span>
-                        ${source.gazetteno ? `<span>Gazette No. ${escapeHtml(source.gazetteno)}</span>` : ''}
-                        ${source.gazettedoc ? `<span>Source Link: ${escapeHtml(source.gazettedoc)}</span>` : ''}
-                        ${source.notificationdate ? `<span>📅 ${escapeHtml(source.notificationdate)}</span>` : ''}
+                    <div class="result-url">
+                        <div class="result-path">Gazette No. ${source.gazetteno || 'N/A'} • ${date}</div>
                     </div>
-                    ${contextHtml} </div>
+                    <a class="result-title" onclick="toggleContext('context-${index}')">${escapeHtml(title)}</a>
+                    <div class="result-meta">
+                        <span>📄 Gazette ID: ${source.gazette_id}</span>
+                        <span>📑 Chunk: ${source.chunk_index}</span>
+                    </div>
+                    ${source.context ? `
+                        <div class="context-section">
+                            <button class="context-toggle" onclick="toggleContext('context-${index}')">
+                                <span id="arrow-${index}">▶</span> View document excerpt
+                            </button>
+                            <div class="context-content" id="context-${index}">${escapeHtml(source.context)}</div>
+                        </div>
+                    ` : ''}
+                </div>
             `;
         }
         
-        // --- NEW FUNCTION ADDED ---
-        function toggleContext(button, contextId) {
-            const contextDiv = document.getElementById(contextId);
-            if (contextDiv.style.display === 'block') {
-                contextDiv.style.display = 'none';
-                button.textContent = 'Show Context';
+        function toggleContext(id) {
+            const content = document.getElementById(id);
+            const arrow = document.getElementById('arrow-' + id.split('-')[1]);
+            
+            if (content.style.display === 'block') {
+                content.style.display = 'none';
+                if (arrow) arrow.textContent = '▶';
             } else {
-                contextDiv.style.display = 'block';
-                button.textContent = 'Hide Context';
+                content.style.display = 'block';
+                if (arrow) arrow.textContent = '▼';
             }
         }
-
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+        
         function escapeHtml(text) {
-            // Ensure text is a string before proceeding
-            const strText = String(text || ''); 
             const div = document.createElement('div');
-            div.textContent = strText;
+            div.textContent = String(text || '');
             return div.innerHTML;
         }
         
-        // Allow Enter key to submit (Shift+Enter for new line)
-        document.getElementById("queryInput").addEventListener("keypress", function(e) {
-            if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submitQuery();
+        // Allow Enter key to search
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                performSearch();
             }
         });
     </script>
