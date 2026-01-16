@@ -1,7 +1,7 @@
 import os
 import psycopg2
 import requests
-from openai import OpenAI
+
 from typing import List, Tuple, Optional
 from dotenv import load_dotenv
 import json
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # --- Environment & API Key Loading ---
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 NOMIC_API_KEY = os.getenv("NOMIC_API_KEY")
 JINA_API_KEY = os.getenv("JINA_API_KEY")
 
@@ -60,15 +60,50 @@ class ProcessedQuery:
 
 # --- Core Classes ---
 
+
 class LLMQueryProcessor:
     """Processes the raw user query into a structured ProcessedQuery object using an LLM."""
     
-    def __init__(self, client: OpenAI, model: str = "gpt-4o-mini"):
-        # Use Dependency Injection for the OpenAI client
-        self.client = client
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash-lite"):
+        self.api_key = api_key
         self.model = model
         self.current_year = datetime.now().year
+        self.base_url = "https://aiplatform.googleapis.com/v1/publishers/google/models"
         logger.debug(f"LLMQueryProcessor initialized with model: {self.model}")
+
+    def _call_gemini(self, prompt: str, system_instruction: str = None, response_format: str = None) -> str:
+        url = f"{self.base_url}/{self.model}:generateContent?key={self.api_key}"
+        
+        payload = {
+            "contents": [{
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.3
+            }
+        }
+
+        if system_instruction:
+            payload["systemInstruction"] = {
+                "parts": [{"text": system_instruction}]
+            }
+            
+        if response_format == "json":
+            payload["generationConfig"]["responseMimeType"] = "application/json"
+
+        try:
+            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+            response.raise_for_status()
+            result = response.json()
+            # Extract text from the response structure
+            # Structure: candidates[0].content.parts[0].text
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            logger.error(f"Gemini API call failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response: {e.response.text}")
+            raise
 
     def process_query(self, user_query: str) -> ProcessedQuery:
         """
@@ -79,17 +114,11 @@ class LLMQueryProcessor:
         logger.debug(f"LLM prompt for query processing:\n{prompt}")
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a query processing assistant for a gazette search system. You must return valid JSON only."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                response_format={"type": "json_object"}
+            result_json = self._call_gemini(
+                prompt=prompt,
+                system_instruction="You are a query processing assistant for a gazette search system. You must return valid JSON only.",
+                response_format="json"
             )
-            
-            result_json = response.choices[0].message.content
             logger.debug(f"LLM response JSON: {result_json}")
             
             result = json.loads(result_json)
@@ -139,12 +168,13 @@ class RAGSystem:
     RERANK_TOP_N = 6
 
     def __init__(self):
-        if not OPENAI_API_KEY:
-            logger.error("OPENAI_API_KEY is not set.")
-            raise ValueError("OPENAI_API_KEY is not set.")
+        if not GEMINI_API_KEY:
+            logger.error("GEMINI_API_KEY is not set.")
+            raise ValueError("GEMINI_API_KEY is not set.")
         
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
-        self.query_processor = LLMQueryProcessor(client=self.client)
+        self.api_key = GEMINI_API_KEY
+        # No client obj needed for requests, but we pass key
+        self.query_processor = LLMQueryProcessor(api_key=self.api_key)
         self.db_config = get_db_config() # Get config once
         logger.info("RAGSystem initialized successfully.")
 
@@ -400,21 +430,20 @@ class RAGSystem:
 
         # --- Call LLM ---
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a domain expert assistant that answers strictly based on the provided gazette context.",
-                    },
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.2,
+            # We can reuse the _call_gemini logic from processor if we refactor, 
+            # or just use the processor instance's method if we made it public/static or attached to self.
+            # For cleanliness, I'll use the processor's method since it handles the request logic.
+            # But the processor is specialized. I should move the _call_gemini to a mixin or just duplicate for now to avoid large refactor.
+            # actually better: use the one in query_processor since we have access to it.
+            
+            answer = self.query_processor._call_gemini(
+                prompt=user_prompt,
+                system_instruction="You are a domain expert assistant that answers strictly based on the provided gazette context."
             )
-
-            answer = response.choices[0].message.content.strip()
+            
+            answer = answer.strip()
             logger.info("Answer generated successfully.")
-            logger.info(response)
+            logger.info(answer)
 
             logger.debug(f"Answer preview: {answer[:300]}...")
             return answer
@@ -558,8 +587,8 @@ class RAGSystem:
 #     logger.info("Starting RAG system for direct execution...")
     
 #     # Check for necessary API keys
-#     if not all([OPENAI_API_KEY, NOMIC_API_KEY, JINA_API_KEY, os.getenv("DATABASE_URL")]):
-#         logger.error("Missing one or more required environment variables: OPENAI_API_KEY, NOMIC_API_KEY, JINA_API_KEY, DATABASE_URL")
+#     if not all([GEMINI_API_KEY, NOMIC_API_KEY, JINA_API_KEY, os.getenv("DATABASE_URL")]):
+#         logger.error("Missing one or more required environment variables: GEMINI_API_KEY, NOMIC_API_KEY, JINA_API_KEY, DATABASE_URL")
 #     else:
 #         try:
 #             rag_system = RAGSystem()

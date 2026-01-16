@@ -1,3 +1,9 @@
 venv
 .env
 __pycache__
+
+debug_gemini.py
+debug_out.txt
+debug_output.txt
+test_gemini_integration.py
+test_output.txt

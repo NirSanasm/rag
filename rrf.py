@@ -1,7 +1,7 @@
 import os
 import psycopg2
 import requests
-from openai import OpenAI
+
 from typing import List, Tuple, Optional, Dict, Any
 from dotenv import load_dotenv
 import json
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # --- Environment & API Key Loading ---
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 NOMIC_API_KEY = os.getenv("NOMIC_API_KEY")
 JINA_API_KEY = os.getenv("JINA_API_KEY")
 
@@ -54,20 +54,57 @@ class ProcessedQuery:
     gazetteno: Optional[str]
     date_filter: Optional[dict]
     vector_search_query: str
+    language: str = "English"
+    translated_query: Optional[str] = None
 
     def to_dict(self):
         return asdict(self)
 
 # --- Core Classes ---
 
+
 class LLMQueryProcessor:
     """Processes the raw user query into a structured ProcessedQuery object using an LLM."""
     
-    def __init__(self, client: OpenAI, model: str = "gpt-4o-mini"):
-        self.client = client
+    def __init__(self, api_key: str, model: str = "gemini-3-flash-preview"):
+        self.api_key = api_key
         self.model = model
         self.current_year = datetime.now().year
+        self.base_url = "https://aiplatform.googleapis.com/v1/publishers/google/models"
         logger.debug(f"LLMQueryProcessor initialized with model: {self.model}")
+
+    def _call_gemini(self, prompt: str, system_instruction: str = None, response_format: str = None) -> str:
+        url = f"{self.base_url}/{self.model}:generateContent?key={self.api_key}"
+        
+        payload = {
+            "contents": [{
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.3
+            }
+        }
+
+        if system_instruction:
+            payload["systemInstruction"] = {
+                "parts": [{"text": system_instruction}]
+            }
+            
+        if response_format == "json":
+            payload["generationConfig"]["responseMimeType"] = "application/json"
+
+        try:
+            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
+            response.raise_for_status()
+            result = response.json()
+            # Extract text from the response structure
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            logger.error(f"Gemini API call failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response: {e.response.text}")
+            raise
 
     def process_query(self, user_query: str) -> ProcessedQuery:
         """
@@ -78,17 +115,11 @@ class LLMQueryProcessor:
         logger.debug(f"LLM prompt for query processing:\n{prompt}")
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a query processing assistant for a gazette search system. You must return valid JSON only."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                response_format={"type": "json_object"}
+            result_json = self._call_gemini(
+                prompt=prompt,
+                system_instruction="You are a query processing assistant for a gazette search system. You must return valid JSON only.",
+                response_format="json"
             )
-            
-            result_json = response.choices[0].message.content
             logger.debug(f"LLM response JSON: {result_json}")
             
             result = json.loads(result_json)
@@ -98,9 +129,11 @@ class LLMQueryProcessor:
                 intent=result.get("intent", "general"),
                 gazetteno=result.get("gazetteno"),
                 date_filter=result.get("date_filter"),
-                vector_search_query=result.get("vector_search_query", user_query)
+                vector_search_query=result.get("vector_search_query", user_query),
+                language=result.get("language", "English"),
+                translated_query=result.get("translated_query", user_query)
             )
-            logger.info(f"Query processed successfully: {processed_query.to_dict()}")
+            logger.info(f"Query processed successfully. Language: {processed_query.language}")
             return processed_query
 
         except json.JSONDecodeError as e:
@@ -118,13 +151,26 @@ Current year: {self.current_year}
 Query: "{user_query}"
 
 Return JSON with:
-1. bm25_keywords: Core keywords without stopwords. Normalized spelling must add 1-2 relevant synonyms for main conceptual keywords. Combine all into a flat list.
-2. intent: One of [fact_finding, summarization, monitoring, comparison, general]
-3. gazetteno: Gazette number if present, else null
-4. date_filter: If date is specified, Parse dates as {{"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}} or if not specified, null
-5. vector_search_query: Original query + 2-3 semantic variations combined as a single string.
+1. language: Detect the language of the query (e.g., "English", "Manipuri").
+2. translated_query: The query translated to English. If already English, return the original query.
+3. bm25_keywords: Core keywords from the TRANSLATED QUERY without stopwords. Normalized spelling must add 1-2 relevant synonyms for main conceptual keywords. Combine all into a flat list.
+4. intent: One of [fact_finding, summarization, monitoring, comparison, general] based on the translated query.
+5. gazetteno: Gazette number if present, else null
+6. date_filter: If date is specified, Parse dates as {{"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}} or if not specified, null
+7. vector_search_query: TRANSLATED QUERY + 2-3 semantic variations combined as a single string.
 
 Return ONLY valid JSON."""
+
+    def translate_text(self, text: str, target_language: str) -> str:
+        """Translates text to the target language using the LLM."""
+        logger.info(f"Translating text to {target_language}...")
+        prompt = f"Translate the following text to {target_language}. Maintain the original formatting, tone, and citation style.\n\nText:\n{text}"
+        try:
+             # Use a simpler system instruction for translation
+             return self._call_gemini(prompt, system_instruction=f"You are a professional translator. Translate content to {target_language}.")
+        except Exception as e:
+            logger.error(f"Translation failed: {e}")
+            return text # Return original text on failure
 
 
 class RAGSystem:
@@ -145,12 +191,12 @@ class RAGSystem:
     RRF_K = 60 
 
     def __init__(self):
-        if not OPENAI_API_KEY:
-            logger.error("OPENAI_API_KEY is not set.")
-            raise ValueError("OPENAI_API_KEY is not set.")
+        if not GEMINI_API_KEY:
+            logger.error("GEMINI_API_KEY is not set.")
+            raise ValueError("GEMINI_API_KEY is not set.")
         
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
-        self.query_processor = LLMQueryProcessor(client=self.client)
+        self.api_key = GEMINI_API_KEY
+        self.query_processor = LLMQueryProcessor(api_key=self.api_key)
         self.db_config = get_db_config()
         logger.info("RAGSystem initialized successfully.")
 
@@ -469,21 +515,18 @@ class RAGSystem:
 
             # --- Call LLM ---
             try:
-                response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a domain expert assistant that answers strictly based on the provided gazette context.",
-                        },
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=0.2,
+                target_language = processed_query.language
+                if target_language and "manipuri" in target_language.lower():
+                    target_language = "Manipuri (in Roman script)"
+                
+                answer = self.query_processor._call_gemini(
+                    prompt=user_prompt,
+                    system_instruction=f"You are a domain expert assistant that answers strictly based on the provided gazette context. You must answer in {target_language}."
                 )
-
-                answer = response.choices[0].message.content.strip()
+                
+                answer = answer.strip()
                 logger.info("Answer generated successfully.")
-                logger.info(response)
+                logger.debug(answer)
 
                 logger.debug(f"Answer preview: {answer[:300]}...")
                 return answer
@@ -552,6 +595,11 @@ class RAGSystem:
         try:
             # 1. Process Query
             processed_query = self.query_processor.process_query(user_query)
+            
+            # Use the translated query for downstream tasks (reranking, generation) 
+            # to ensure consistency with the English content
+            effective_query = processed_query.translated_query if processed_query.translated_query else user_query
+            
             query_embedding = self.get_nomic_embedding([processed_query.vector_search_query])[0]
 
             # 2. Retrieve (Parallel Chunk-Level Search)
@@ -587,15 +635,18 @@ class RAGSystem:
             logger.info(f"Sending {len(initial_chunks_for_rerank)} fused chunks to reranker.")
 
             # 4. Rerank
-            reranked = self.rerank_chunks(user_query, initial_chunks_for_rerank, top_n=self.RERANK_TOP_N)
+            # Pass effective_query (English) to reranker for better match with English content
+            reranked = self.rerank_chunks(effective_query, initial_chunks_for_rerank, top_n=self.RERANK_TOP_N)
 
             # 5. Generate
             context_chunks = [c[0] for c in reranked]
             metadata = [(c[1], c[2]) for c in reranked]
-            # answer = self.generate_answer(user_query, context_chunks, metadata)
+            
+            # Generate answer using the ORIGINAL user query (e.g., in Manipuri)
+            # The context is in English, but the LLM will answer in the query's language.
             answer = self.generate_answer(user_query, processed_query, context_chunks, metadata)
 
-            # 6. Collate Sources
+            # 7. Collate Sources
             main_sources_raw = [
                 {"gazette_id": gazette_id, "chunk_index": chunk_index, "context": content}
                 for content, gazette_id, chunk_index in reranked
@@ -609,7 +660,7 @@ class RAGSystem:
                 if (gazette_id, chunk_index) not in main_keys
             ]
 
-            # 7. Fetch Metadata and Enrich
+            # 8. Fetch Metadata and Enrich
             all_gazette_ids = list({src["gazette_id"] for src in main_sources_raw + other_sources_raw})
             gazette_metadata = self._fetch_gazette_metadata(all_gazette_ids)
 
@@ -624,6 +675,7 @@ class RAGSystem:
             }
 
         except Exception as e:
+            # Catch-all for any unhandled exceptions in the pipeline
             logger.error(f"Unhandled exception in RAG query: {e}", exc_info=True)
             return {
                 "answer": "An critical error occurred while processing your query.",
@@ -635,8 +687,8 @@ class RAGSystem:
 if __name__ == "__main__":
     logger.info("Starting RAG system for direct execution...")
     
-    if not all([OPENAI_API_KEY, NOMIC_API_KEY, JINA_API_KEY, os.getenv("DATABASE_URL")]):
-        logger.error("Missing one or more required environment variables: OPENAI_API_KEY, NOMIC_API_KEY, JINA_API_KEY, DATABASE_URL")
+    if not all([GEMINI_API_KEY, NOMIC_API_KEY, JINA_API_KEY, os.getenv("DATABASE_URL")]):
+        logger.error("Missing one or more required environment variables: GEMINI_API_KEY, NOMIC_API_KEY, JINA_API_KEY, DATABASE_URL")
     else:
         try:
             rag_system = RAGSystem()

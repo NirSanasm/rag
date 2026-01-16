@@ -2,6 +2,6 @@ fastapi
 uvicorn
 psycopg2-binary 
 python-dotenv 
-openai
+
 requests
 jinja2
