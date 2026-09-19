@@ -70,7 +70,7 @@ class LLMQueryProcessor:
         self.api_key = api_key
         self.model = model
         self.current_year = datetime.now().year
-        self.base_url = "https://aiplatform.googleapis.com/v1/publishers/google/models"
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
         logger.debug(f"LLMQueryProcessor initialized with model: {self.model}")
 
     def _call_gemini(self, prompt: str, system_instruction: str = None, response_format: str = None) -> str:
